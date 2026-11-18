@@ -194,6 +194,7 @@ const MapX = (() => {
       if (type !== 'kakao') return resolve(null);
       const S = kakao.maps.services; const out = [];
       const get = (page) => places.categorySearch(code, (data, status, pg) => {
+        if (status !== S.Status.OK && status !== S.Status.ZERO_RESULT && page === 1) return resolve(null); // 키/도메인 오류 → 무료 검색으로
         if (status === S.Status.OK) out.push(...data.map(kakaoPlace));
         if (status === S.Status.OK && pg.hasNextPage && page < 3) get(page + 1); else resolve(out);
       }, { location: new kakao.maps.LatLng(center.lat, center.lng), radius: 1000, sort: S.SortBy.DISTANCE, page });
