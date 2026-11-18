@@ -179,20 +179,30 @@ const MapX = (() => {
       places.keywordSearch(q, (data, status, pg) => {
         if (status === S.Status.ZERO_RESULT) return resolve({ list: [], total: 0, pages: 0 });
         if (status !== S.Status.OK) return resolve(null);
-        resolve({
-          total: pg.totalCount, pages: pg.last,
-          list: data.map((d) => ({
-            id: 'k' + d.id, name: d.place_name, cat: d.category_name.split(' > ').pop(), fullCat: d.category_name,
-            addr: d.road_address_name || d.address_name, jibun: d.road_address_name ? d.address_name : '',
-            tel: d.phone, lat: +d.y, lng: +d.x, url: d.place_url, kakao: true,
-          })),
-        });
+        resolve({ total: pg.totalCount, pages: pg.last, list: data.map(kakaoPlace) });
       }, opt);
+    });
+  }
+  const kakaoPlace = (d) => ({
+    id: 'k' + d.id, name: d.place_name, cat: d.category_name.split(' > ').pop(), fullCat: d.category_name,
+    addr: d.road_address_name || d.address_name, jibun: d.road_address_name ? d.address_name : '',
+    tel: d.phone, lat: +d.y, lng: +d.x, url: d.place_url, kakao: true,
+  });
+  // 카테고리 검색 (음식점 FD6, 카페 CE7 …) — 지도 중심 1km, 가까운 순, 최대 45개
+  function categorySearch(code, center) {
+    return new Promise((resolve) => {
+      if (type !== 'kakao') return resolve(null);
+      const S = kakao.maps.services; const out = [];
+      const get = (page) => places.categorySearch(code, (data, status, pg) => {
+        if (status === S.Status.OK) out.push(...data.map(kakaoPlace));
+        if (status === S.Status.OK && pg.hasNextPage && page < 3) get(page + 1); else resolve(out);
+      }, { location: new kakao.maps.LatLng(center.lat, center.lng), radius: 1000, sort: S.SortBy.DISTANCE, page });
+      get(1);
     });
   }
 
   return {
     init, setInset, addOverlay, addLine, setCenter, fitPoints, getCenter, getBounds, zoom, relayout, on,
-    reverseGeocode, keywordSearch, get type() { return type; },
+    reverseGeocode, keywordSearch, categorySearch, get type() { return type; },
   };
 })();

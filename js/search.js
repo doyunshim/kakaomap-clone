@@ -138,7 +138,7 @@ const Search = (() => {
     if (!q) return;
     if (!keepTab && q !== st.q) st.tab = 'all';
     if (q !== st.q) st.sort = 'acc';
-    st.q = q; st.page = page; st.bounds = bounds || null; st.openRel = null;
+    st.q = q; st.page = page; st.bounds = bounds || null; st.openRel = null; st.category = null; editing = null;
     pushRecent(q);
     hideSuggest();
     $('#searchInput').value = q;
@@ -156,6 +156,12 @@ const Search = (() => {
     }
   }
   async function fetchPlaces() {
+    if (st.category) { // 주변 탐색 결과 (가까운 순)
+      let all = st.catList || [];
+      if (st.sort === 'pop') all = [...all].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      st.places = { all, total: all.length, pages: Math.ceil(all.length / PAGE), list: all.slice((st.page - 1) * PAGE, st.page * PAGE) };
+      return;
+    }
     const kk = await MapX.keywordSearch(st.q, {
       page: st.page, size: PAGE, sort: st.sort === 'pop' ? 'distance' : 'accuracy', center: MapX.getCenter(), bounds: st.bounds,
     });
@@ -180,7 +186,7 @@ const Search = (() => {
     const { tab } = st;
     let html = '';
     if (tab === 'all') {
-      html += `<div class="res-info">장소명 <em>${esc(st.q)}</em> 검색결과${st.bounds ? '<small>현재 지도 영역에서 다시 검색한 결과예요</small>' : ''}</div>`;
+      html += st.category ? `<div class="res-info">지도 중심 주변 <em>${esc(st.q)}</em> 검색결과</div>` : `<div class="res-info">장소명 <em>${esc(st.q)}</em> 검색결과${st.bounds ? '<small>현재 지도 영역에서 다시 검색한 결과예요</small>' : ''}</div>`;
       if (!st.places.total && !st.addrs.length && !st.buses.length && !st.stops.length) html += noRes();
       if (st.places.total) html += placeSection();
       if (st.addrs.length) html += miniSection('주소', st.addrs.slice(0, 3), addrRow, 'addr', st.addrs.length);
@@ -214,10 +220,12 @@ const Search = (() => {
     }
     return h;
   }
-  const saved = () => store.get('km_saved', []);
+  // 즐겨찾기 : 장소 정보를 통째로 저장 (예전 형식인 id 문자열은 무시)
+  const savedList = () => store.get('km_saved', []).filter((x) => x && typeof x === 'object');
+  const isSavedId = (id) => savedList().some((x) => x.id === id);
   function placeRow(p, i) {
     const name = p.sub ? `${esc(p.name)} <small>${esc(p.sub)}</small>` : esc(p.name);
-    const isSaved = saved().includes(p.id);
+    const isSaved = isSavedId(p.id);
     const rel = p.rel && p.rel.length
       ? `<div><button class="pl-rel ${st.openRel === p.id ? 'open' : ''}" data-rel="${p.id}">관련장소 <b>${p.rel.length}</b></button></div>
          ${st.openRel === p.id ? `<div class="rel-list">${p.rel.map((r) => `<button data-relgo="${esc(r)}">${esc(r)}</button>`).join('')}</div>` : ''}`
@@ -307,7 +315,7 @@ const Search = (() => {
     rows.push(`<div class="dt-row"><i>분류</i><div>${esc(p.fullCat || p.cat)}</div></div>`);
     if (p.url) rows.push(`<div class="dt-row"><i>더보기</i><div><a href="${esc(p.url)}" target="_blank" rel="noopener">카카오맵 장소 페이지에서 보기 ›</a></div></div>`);
     if (p.rel && p.rel.length) rows.push(`<div class="dt-row"><i>관련장소</i><div class="dt-rel">${p.rel.map((r) => `<button data-relgo="${esc(r)}">${esc(r)}</button>`).join('')}</div></div>`);
-    const isSaved = saved().includes(p.id);
+    const isSaved = isSavedId(p.id);
     box.innerHTML = `<div class="dt-top"><button class="dt-back" aria-label="뒤로"></button><span>${esc(st.q || '장소')} 검색결과</span></div>
       <div class="scroll">
         <div class="dt-hero"><svg width="120" height="110" viewBox="0 0 64 64"><path d="M32 4C20.4 4 11 13.2 11 24.6 11 39.4 29.4 58 30.6 59.2c.8.8 2 .8 2.8 0C34.6 58 53 39.4 53 24.6 53 13.2 43.6 4 32 4z" fill="#2f6ff0"/><circle cx="32" cy="24" r="8" fill="#fff"/></svg></div>
@@ -327,14 +335,14 @@ const Search = (() => {
     $('.dt-back', box).addEventListener('click', closeDetail);
     box.querySelector('[data-dt="start"]').addEventListener('click', () => toRoute('start', p));
     box.querySelector('[data-dt="end"]').addEventListener('click', () => toRoute('end', p));
-    box.querySelector('[data-dt="save"]').addEventListener('click', () => { toggleSave(p.id); openDetail(p); });
+    box.querySelector('[data-dt="save"]').addEventListener('click', () => { toggleSave(p); openDetail(p); });
     $$('[data-relgo]', box).forEach((b) => b.addEventListener('click', () => goRel(b.dataset.relgo)));
     if (st.markers.some((m) => m.id === p.id)) select(p); else showSingle(p);
   }
   function closeDetail() { $('#placeDetail').hidden = true; }
-  function toggleSave(id) {
-    const s = saved(); const i = s.indexOf(id);
-    if (i >= 0) { s.splice(i, 1); App.toast('저장을 취소했어요'); } else { s.push(id); App.toast('MY 장소에 저장했어요'); }
+  function toggleSave(p) {
+    const s = savedList(); const i = s.findIndex((x) => x.id === p.id);
+    if (i >= 0) { s.splice(i, 1); App.toast('즐겨찾기를 해제했어요'); } else { s.push(slim(p)); App.toast('즐겨찾기에 추가했어요'); }
     store.set('km_saved', s);
   }
   function goRel(name) {
@@ -379,13 +387,14 @@ const Search = (() => {
     $('#searchBody').addEventListener('click', async (e) => {
       const t = e.target;
       if (t.closest('[data-todo]')) return;
+      if (!st.q) return onHomeClick(e); // 초기 화면
       const sortB = t.closest('[data-sort]');
       if (sortB) { st.sort = sortB.dataset.sort; st.page = 1; await fetchPlaces(); return render(); }
       const pg = t.closest('[data-page]');
       if (pg) { st.page = +pg.dataset.page; await fetchPlaces(); return render(); }
       const go = t.closest('[data-gotab]'); if (go) return setTab(go.dataset.gotab);
       const sv = t.closest('[data-save]');
-      if (sv) { toggleSave(sv.dataset.save); sv.classList.toggle('saved'); return; }
+      if (sv) { const p = st.places.list.find((x) => x.id === sv.dataset.save); if (p) { toggleSave(p); sv.classList.toggle('saved'); } return; }
       const dt = t.closest('[data-detail]');
       if (dt) { const p = st.places.list.find((x) => x.id === dt.dataset.detail); if (p) openDetail(p); return; }
       const rel = t.closest('[data-rel]');
@@ -415,17 +424,139 @@ const Search = (() => {
     // 이 지역 재검색
     const onMove = () => { if (App.tab === 'search' && st.q && (st.tab === 'all' || st.tab === 'place')) $('#researchBtn').hidden = false; };
     MapX.on('moved', onMove);
-    $('#researchBtn').addEventListener('click', () => run(st.q, { keepTab: true, bounds: MapX.getBounds() }));
+    $('#researchBtn').addEventListener('click', () => (st.category ? runCategory(st.category) : run(st.q, { keepTab: true, bounds: MapX.getBounds() })));
 
     renderHome();
   }
-  function renderHome() {
-    const chips = ['석촌역', '잠실역', '롯데월드타워', '석촌호수', '스타벅스', '송파01'];
-    $('#searchBody').innerHTML = `<div class="home"><h3>어디를 찾으세요?</h3>장소, 주소, 버스, 정류장을 검색해 보세요.
-      <div class="home-chips">${chips.map((c) => `<button data-chip="${c}">${c}</button>`).join('')}</div></div>`;
-    $$('#searchBody [data-chip]').forEach((b) => b.addEventListener('click', () => run(b.dataset.chip)));
+  /* ---------------- 초기 화면 : 주변 탐색 · 내 장소 · 즐겨찾기 ---------------- */
+  const CATS = [
+    { key: 'food', label: '음식점', kakao: 'FD6', osm: ['amenity=restaurant', 'amenity=fast_food'],
+      icon: '<svg viewBox="0 0 24 24"><path d="M7 3v7.5a2 2 0 0 0 1.2 1.8V21h1.6v-8.7A2 2 0 0 0 11 10.5V3H9.9v6.3h-.8V3H8.1v6.3h-.8V3zM15.5 3c-1.4 0-2.5 2.2-2.5 5.3 0 2 .8 3.3 1.8 3.8V21h1.6V3z" fill="#333"/></svg>' },
+    { key: 'cafe', label: '카페', kakao: 'CE7', osm: ['amenity=cafe'],
+      icon: '<svg viewBox="0 0 24 24"><path d="M4 7h12v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 9h1.5a2.5 2.5 0 0 1 0 5H16" fill="#333" stroke="#333" stroke-width="1.6"/></svg>' },
+    { key: 'bus', label: '버스', osm: ['highway=bus_stop'],
+      icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12a2 2 0 0 1 2 2v13H4V5a2 2 0 0 1 2-2zM5 18h3v2.2a.8.8 0 0 1-.8.8H5.8a.8.8 0 0 1-.8-.8zm11 0h3v2.2a.8.8 0 0 1-.8.8h-1.4a.8.8 0 0 1-.8-.8z" fill="#333"/><rect x="6" y="6" width="12" height="6" rx=".6" fill="#fff"/><circle cx="7.6" cy="15" r="1.1" fill="#fff"/><circle cx="16.4" cy="15" r="1.1" fill="#fff"/></svg>' },
+    { key: 'subway', label: '지하철', kakao: 'SW8', osm: ['railway=station', 'station=subway'],
+      icon: '<svg viewBox="0 0 24 24"><path d="M7 3h10a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z" fill="#333"/><rect x="6.3" y="6" width="11.4" height="5" rx=".6" fill="#fff"/><circle cx="8.3" cy="14.6" r="1.2" fill="#fff"/><circle cx="15.7" cy="14.6" r="1.2" fill="#fff"/><path d="M7.5 18l-2 3.5M16.5 18l2 3.5" stroke="#333" stroke-width="1.8"/></svg>' },
+    { key: 'hotel', label: '숙박', kakao: 'AD5', osm: ['tourism=hotel', 'tourism=motel', 'tourism=guest_house'],
+      icon: '<svg viewBox="0 0 24 24"><path d="M3 5v15M3 16h18v4M21 16v-3a3 3 0 0 0-3-3h-7v6" fill="none" stroke="#333" stroke-width="2"/><circle cx="7" cy="11.5" r="2.2" fill="#333"/></svg>' },
+    { key: 'bank', label: '은행', kakao: 'BK9', osm: ['amenity=bank'],
+      icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="#333"/><path d="M6.5 8l2.2 8 2-6 2 0 .1 0 2 6 2.2-8M6 11.5h12" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>' },
+    { key: 'conv', label: '편의점', kakao: 'CS2', osm: ['shop=convenience'],
+      icon: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5" fill="#333"/><path d="M8 3.5v3M16 3.5v3" stroke="#333" stroke-width="1.8"/><text x="12" y="16.3" font-family="Arial" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">24</text></svg>' },
+  ];
+  const MP_ICON = {
+    home: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#c3c6cc"/><path d="M5.5 10L10 6l4.5 4v4.5h-3v-3h-3v3h-3z" fill="#fff"/></svg>',
+    work: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#c3c6cc"/><path d="M6.5 6h7v8.5h-2.3v-2.3H8.8v2.3H6.5z" fill="#fff"/><path d="M8.3 8h1.2M10.5 8h1.2M8.3 10h1.2M10.5 10h1.2" stroke="#c3c6cc" stroke-width=".9"/></svg>',
+    fav: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#c3c6cc"/><path d="M7 5.5v9.5" stroke="#fff" stroke-width="1.4"/><path d="M7.6 5.8h6.4l-1.6 2.2 1.6 2.3H7.6z" fill="#fff"/></svg>',
+  };
+  const myPlaces = () => { const m = store.get('km_myplaces', {}); return { home: m.home || null, work: m.work || null, fav: Array.isArray(m.fav) ? m.fav : [] }; };
+  const slim = (p) => ({ id: p.id, name: fullName(p), cat: p.cat, addr: p.addr, lat: p.lat, lng: p.lng });
+  let editing = null; // 'home' | 'work' | 'fav'
+
+  function mpRow(kind, p, i) {
+    const empty = { home: '집 주소를 등록하세요.', work: '회사/학교 주소를 등록하세요.', fav: '자주 가는 장소 주소를 등록하세요. <small>(최대 5개)</small>' }[kind];
+    if (editing === kind && !p) {
+      return `<div class="mp-row editing">${MP_ICON[kind]}<div class="mp-edit"><input id="mpInput" type="text" placeholder="장소, 주소 검색" autocomplete="off">
+        <button class="mp-cancel" data-mp-cancel aria-label="취소"></button><div id="mpSuggest" class="mp-sg" hidden></div></div></div>`;
+    }
+    if (!p) return `<button class="mp-row" data-mp-add="${kind}">${MP_ICON[kind]}<span class="mp-empty">${empty}</span></button>`;
+    const label = { home: '집', work: '회사/학교', fav: '' }[kind];
+    return `<div class="mp-row set" data-mp-go="${kind}" data-mp-i="${i ?? ''}">${MP_ICON[kind]}
+      <div class="mp-txt"><b>${label ? `${label} · ` : ''}${esc(p.name)}</b><span>${esc(p.addr)}</span></div>
+      <button class="mp-del" data-mp-del="${kind}" data-mp-i="${i ?? ''}" aria-label="삭제"></button></div>`;
   }
+  function renderHome() {
+    const m = myPlaces();
+    const favRows = m.fav.map((p, i) => mpRow('fav', p, i)).join('') + (m.fav.length < 5 ? mpRow('fav', null) : '');
+    const saved = savedList();
+    $('#searchBody').innerHTML = `<div class="home">
+      <section class="hm-sec"><h4>주변 탐색</h4>
+        <div class="nearby">${CATS.map((c) => `<button data-cat="${c.key}"><span class="nb-ic">${c.icon}</span>${c.label}</button>`).join('')}</div></section>
+      <section class="hm-sec"><h4><button class="hm-more" data-todo>내 장소</button></h4>
+        <div class="mp-list">${mpRow('home', m.home)}${mpRow('work', m.work)}${favRows}</div></section>
+      <section class="hm-sec"><h4><button class="hm-more" data-todo>즐겨찾기</button></h4>
+        ${saved.length ? `<div class="mp-list">${saved.map((p) => `<div class="mp-row set" data-saved="${esc(p.id)}">${ICON.bookmark.replace('width="22" height="22"', 'width="20" height="20"')}
+            <div class="mp-txt"><b>${esc(p.name)}</b><span>${esc(p.addr)}</span></div></div>`).join('')}</div>`
+          : '<p class="hm-desc">저장한 즐겨찾기에 대해 \'홈 목록 추가\'한 장소가 나옵니다.<br>자주 쓰는 즐겨찾기를 더 빠르게 사용해 보세요.</p>'}</section>
+    </div>
+    <div class="notice"><span class="nt-tag">공지</span><span class="nt-txt">짭카오맵 검색 · 길찾기 서비스가 열렸어요.</span><button data-todo>더보기</button></div>`;
+    const inp = $('#mpInput');
+    if (inp) {
+      inp.focus();
+      let tm = null;
+      inp.addEventListener('input', () => {
+        clearTimeout(tm);
+        const q = inp.value.trim();
+        const box = $('#mpSuggest');
+        if (!q) { box.hidden = true; return; }
+        tm = setTimeout(async () => {
+          const list = await findPlaces(q, 6);
+          if (inp.value.trim() !== q) return;
+          st.mpItems = list;
+          box.innerHTML = list.length ? list.map((p, i) => `<div class="sg-item" data-mp-pick="${i}"><span class="sg-ico">${ICON.mapPin}</span>
+            <div class="sg-main"><div class="sg-name">${esc(fullName(p))}</div><div class="sg-sub">${esc(p.addr)}</div></div></div>`).join('')
+            : `<div class="sg-empty">'${esc(q)}' 검색결과가 없어요</div>`;
+          box.hidden = false;
+        }, 220);
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { editing = null; renderHome(); }
+        if (e.key === 'Enter' && st.mpItems && st.mpItems.length) pickMyPlace(st.mpItems[0]);
+      });
+    }
+  }
+  function pickMyPlace(p) {
+    const m = myPlaces();
+    if (editing === 'fav') m.fav.push(slim(p)); else m[editing] = slim(p);
+    store.set('km_myplaces', m);
+    App.toast('내 장소에 등록했어요');
+    editing = null; st.mpItems = null;
+    renderHome();
+  }
+  function onHomeClick(e) {
+    const t = e.target;
+    const cat = t.closest('[data-cat]'); if (cat) return runCategory(CATS.find((c) => c.key === cat.dataset.cat));
+    const add = t.closest('[data-mp-add]'); if (add) { editing = add.dataset.mpAdd; return renderHome(); }
+    if (t.closest('[data-mp-cancel]')) { editing = null; return renderHome(); }
+    const pick = t.closest('[data-mp-pick]'); if (pick) return pickMyPlace(st.mpItems[+pick.dataset.mpPick]);
+    const del = t.closest('[data-mp-del]');
+    if (del) {
+      const m = myPlaces(); const k = del.dataset.mpDel;
+      if (k === 'fav') m.fav.splice(+del.dataset.mpI, 1); else m[k] = null;
+      store.set('km_myplaces', m); return renderHome();
+    }
+    const go = t.closest('[data-mp-go]');
+    if (go) { const m = myPlaces(); const k = go.dataset.mpGo; return showSingle(k === 'fav' ? m.fav[+go.dataset.mpI] : m[k]); }
+    const sv = t.closest('[data-saved]');
+    if (sv) { const p = savedList().find((x) => x.id === sv.dataset.saved); if (p) showSingle(p); }
+  }
+
+  /* ---------------- 주변 탐색 (카테고리) ---------------- */
+  async function runCategory(c) {
+    if (!c) return;
+    st.q = c.label; st.category = c; st.tab = 'all'; st.sort = 'acc'; st.page = 1; st.bounds = null; st.openRel = null; st.selected = null;
+    $('#searchInput').value = c.label; $('#searchClear').hidden = false; $('#searchTabs').hidden = false; $('#researchBtn').hidden = true;
+    closeDetail(); hideSuggest();
+    $('#searchBody').innerHTML = '<div class="loading"><div class="spinner"></div>주변 장소를 찾고 있어요</div>';
+    const center = MapX.getCenter();
+    let list = c.kakao ? await MapX.categorySearch(c.kakao, center) : null;
+    if (!list) list = await Geo.nearby(c.osm, center, c.label);
+    if (st.category !== c) return;
+    if (!list) {
+      // 주변 탐색 서버가 모두 바쁠 때 : 이름에 분류가 들어간 장소로 대신 보여주기
+      list = await findPlaces(c.label, 30);
+      if (st.category !== c) return;
+      App.toast('주변 장소 서버가 바빠서 이름 검색 결과로 보여드려요. 잠시 후 다시 눌러 보세요');
+    }
+    st.catList = list;
+    await fetchPlaces();
+    st.addrs = []; st.buses = []; st.stops = [];
+    render();
+  }
+
   function reset() {
+    editing = null; st.category = null;
     st.q = ''; st.selected = null; st.bounds = null;
     $('#searchInput').value = ''; $('#searchClear').hidden = true; $('#searchTabs').hidden = true; $('#researchBtn').hidden = true;
     closeDetail(); clearMarkers(); renderHome();
@@ -437,5 +568,6 @@ const Search = (() => {
     hide() { clearMarkers(); $('#researchBtn').hidden = true; hideSuggest(); },
     run,
     findPlaces,
+    reset,
   };
 })();

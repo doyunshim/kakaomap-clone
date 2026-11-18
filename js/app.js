@@ -47,6 +47,8 @@ const App = {
       const c = document.body.classList.toggle('collapsed');
       MapX.setInset(c ? 0 : PANEL_INSET);
     });
+    // 로고 → 처음 화면 (검색 탭 초기화)
+    $('#logoHome').addEventListener('click', () => { this.showTab('search'); Search.reset(); $('#searchBody').scrollTop = 0; });
     $('#zoomIn').addEventListener('click', () => MapX.zoom(1));
     $('#zoomOut').addEventListener('click', () => MapX.zoom(-1));
 

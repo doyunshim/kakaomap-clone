@@ -47,6 +47,33 @@ const Geo = (() => {
     return { name: j.features[0].properties.name || p.addr, addr: p.addr };
   }
 
+  /* ---------- 주변 탐색 : 지도 중심 반경 약 1km 안의 음식점·카페 등 (Overpass) ---------- */
+  async function nearby(filters, center, label) {
+    const dLat = 0.009; const dLng = 0.0115;
+    const bbox = `${center.lat - dLat},${center.lng - dLng},${center.lat + dLat},${center.lng + dLng}`;
+    const q = `[out:json][timeout:20];(${filters.map((f) => { const [k, v] = f.split('='); return `nwr["${k}"="${v}"]["name"](${bbox});`; }).join('')});out center 120;`;
+    // 무료 서버라 자주 바쁨 → 여러 서버를 차례로 시도
+    const servers = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+    let j = null;
+    for (const url of servers) {
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 9000);
+      try {
+        const r = await fetch(url, { method: 'POST', body: `data=${encodeURIComponent(q)}`, signal: ctl.signal });
+        if (r.ok) j = await r.json();
+      } catch (e) { j = null; } finally { clearTimeout(tm); }
+      if (j) break;
+    }
+    if (!j) return null; // 모든 서버 실패
+    const d2 = (p) => (p.lat - center.lat) ** 2 + ((p.lng - center.lng) * 0.79) ** 2;
+    return j.elements.map((e) => {
+      const t = e.tags || {};
+      const lat = e.lat ?? (e.center && e.center.lat); const lng = e.lon ?? (e.center && e.center.lon);
+      const road = [t['addr:city'], t['addr:district'], t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
+      return { id: `n${e.type}${e.id}`, name: t.name, cat: t.cuisine && label === '음식점' ? `음식점 · ${t.cuisine}` : label,
+        addr: road || t['addr:full'] || '주소 정보 없음', jibun: '', tel: t.phone || t['contact:phone'] || '', lat, lng, osm: true };
+    }).filter((p) => p.lat && p.name).sort((a, b) => d2(a) - d2(b)).slice(0, 45);
+  }
+
   /* ---------- 실제 도로 경로 ---------- */
   const PROFILE = { car: 'routed-car/route/v1/driving', foot: 'routed-foot/route/v1/foot', bike: 'routed-bike/route/v1/bike' };
   const cache = new Map();
@@ -68,5 +95,5 @@ const Geo = (() => {
     return res;
   }
 
-  return { search, reverse, route };
+  return { search, reverse, route, nearby };
 })();
