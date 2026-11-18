@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>카카오맵 클론</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- 왼쪽 패널 -->
+  <aside id="panel">
+    <header class="hd">
+      <div class="hd-top">
+        <button class="hd-menu" data-todo aria-label="메뉴">
+          <svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 6h18M3 12h18M3 18h18" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+        <span class="logo">kakao<b>map</b></span>
+      </div>
+      <nav class="gnb">
+        <button data-tab="search" class="on">검색</button>
+        <button data-tab="route">길찾기</button>
+        <button data-tab="bus" data-todo>버스</button>
+        <button data-tab="subway" data-todo>지하철</button>
+        <button data-tab="my" data-todo>MY</button>
+      </nav>
+    </header>
+
+    <!-- ===================== 검색 ===================== -->
+    <section id="view-search" class="view on">
+      <div class="search-area">
+        <form id="searchForm" class="search-box" autocomplete="off">
+          <input id="searchInput" type="text" placeholder="장소, 버스, 지하철, 도로 검색" spellcheck="false">
+          <button type="button" id="searchClear" class="ico-clear" hidden aria-label="지우기"></button>
+          <button type="submit" class="btn-search" aria-label="검색">
+            <svg viewBox="0 0 24 24" width="28" height="28"><circle cx="10.5" cy="10.5" r="6.8" fill="none" stroke="#222" stroke-width="2.1"/><path d="M15.6 15.6l5 5" stroke="#222" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+          <button type="button" class="ai-ring" data-todo aria-label="AI 메이트"></button>
+        </form>
+        <div id="searchSuggest" class="suggest" hidden></div>
+        <div id="searchTabs" class="sub-tabs" hidden>
+          <button data-st="all" class="on">전체</button>
+          <button data-st="place">장소</button>
+          <button data-st="addr">주소</button>
+          <button data-st="bus">버스</button>
+          <button data-st="stop">정류장</button>
+          <button id="searchClose" class="sub-close" aria-label="닫기"></button>
+        </div>
+      </div>
+      <div id="searchBody" class="scroll"></div>
+      <div id="placeDetail" class="detail" hidden></div>
+    </section>
+
+    <!-- ===================== 길찾기 ===================== -->
+    <section id="view-route" class="view">
+      <div class="route-form">
+        <div class="rf-dots"><i class="dot-s"></i><i class="dot-line"></i><i class="dot-e"></i></div>
+        <div class="rf-inputs">
+          <div class="rf-row">
+            <input id="inpStart" type="text" placeholder="출발지 입력" autocomplete="off" spellcheck="false">
+            <button type="button" class="ico-clear" data-clear="start" hidden></button>
+          </div>
+          <div class="rf-row">
+            <input id="inpEnd" type="text" placeholder="도착지 입력" autocomplete="off" spellcheck="false">
+            <button type="button" class="ico-clear" data-clear="end" hidden></button>
+            <button type="button" class="rf-plus" data-todo aria-label="경유지 추가">
+              <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="10.5" fill="#fff" stroke="#333" stroke-width="1.3"/><path d="M12 7v10M7 12h10" stroke="#333" stroke-width="1.6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="rf-side">
+          <button type="button" id="btnSwap" aria-label="출발지 도착지 바꾸기">
+            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M8 20V4M8 4L4 8M8 4l4 4M16 4v16m0 0l-4-4m4 4l4-4" fill="none" stroke="#333" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" id="btnReset" aria-label="초기화">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M5 5l14 14M19 5L5 19" stroke="#333" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div id="routeSuggest" class="suggest route-suggest" hidden></div>
+      </div>
+      <div class="modes">
+        <button data-mode="car" aria-label="자동차"><svg viewBox="0 0 32 32"><path d="M8.2 7.5h15.6c.9 0 1.6.6 1.9 1.4L27.4 14H4.6l1.7-5.1c.3-.8 1-1.4 1.9-1.4zM3.6 15.2h24.8c.9 0 1.6.7 1.6 1.6v7.6H2v-7.6c0-.9.7-1.6 1.6-1.6zM4.5 24.4h4.6v2.1c0 .6-.5 1-1 1H5.5c-.6 0-1-.4-1-1zm18.4 0h4.6v2.1c0 .6-.4 1-1 1H24c-.6 0-1-.4-1-1z"/><circle cx="7.5" cy="19.6" r="1.9" fill="var(--hole)"/><circle cx="24.5" cy="19.6" r="1.9" fill="var(--hole)"/><rect x="12" y="18.6" width="8" height="2.2" rx="1" fill="var(--hole)"/></svg></button>
+        <button data-mode="transit" aria-label="대중교통"><svg viewBox="0 0 32 32"><path d="M7.5 3h17c1.7 0 3 1.3 3 3v19.2H4.5V6c0-1.7 1.3-3 3-3zM6 25.2h5v2.6c0 .7-.5 1.2-1.2 1.2H7.2C6.5 29 6 28.5 6 27.8zm15 0h5v2.6c0 .7-.5 1.2-1.2 1.2h-2.6c-.7 0-1.2-.5-1.2-1.2z"/><rect x="7.3" y="7" width="17.4" height="9" rx="1" fill="var(--hole)"/><circle cx="9.6" cy="20.6" r="1.8" fill="var(--hole)"/><circle cx="22.4" cy="20.6" r="1.8" fill="var(--hole)"/><rect x="7.3" y="4.3" width="17.4" height="1.4" rx=".7" fill="var(--hole)"/></svg></button>
+        <button data-mode="walk" aria-label="도보"><svg viewBox="0 0 32 32"><circle cx="17.5" cy="4.6" r="2.7"/><path d="M15.3 9.4c1.6-.7 3.4-.4 4.3 1.2l2.1 4.1 4 1.9c.7.3 1 1.2.6 1.9-.3.6-1.1.9-1.8.6l-4.5-2.2-1.2-2.2-1.4 6 3.4 3.9c.3.3.4.7.4 1.1l.6 6.1c.1.8-.5 1.6-1.4 1.6-.7 0-1.3-.5-1.4-1.3l-.6-5.5-3.6-3.8-1.6 4.6c-.1.3-.3.6-.5.8l-4.5 5c-.5.6-1.4.6-2 .1-.6-.5-.6-1.4-.1-2l4.2-4.7 2.5-10.1-2.1 1-1.5 4.3c-.3.7-1 1.1-1.8.8-.7-.3-1.1-1-.8-1.8l1.8-4.9c.1-.4.4-.7.8-.9z"/></svg></button>
+        <button data-mode="bike" aria-label="자전거"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="20.5" r="5.3"/><circle cx="25" cy="20.5" r="5.3"/><path d="M7 20.5l5.2-9.5h9.6M25 20.5L19.2 8.2h3.6M12.2 11l4.8 9.5h-10M16.8 20.5l4.6-9.2M10.2 7.6h3.8"/></svg></button>
+      </div>
+      <div id="routeBody" class="scroll"></div>
+    </section>
+
+    <footer id="ftLinks" class="ft-links">
+      <a data-todo>고객센터</a><a data-todo>신규 장소 등록</a><a data-todo><b>개인정보처리방침</b></a>
+    </footer>
+    <footer id="ftRoute" class="ft-route" hidden>
+      <button data-todo>경로인쇄</button>
+      <button id="btnOverview">경로 한눈에</button>
+      <button data-todo><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z" fill="none" stroke="#333" stroke-width="1.5" stroke-linejoin="round"/></svg>즐겨찾기</button>
+    </footer>
+  </aside>
+
+  <button id="panelToggle" aria-label="패널 접기"></button>
+
+  <!-- 지도 위 요소 -->
+  <button id="researchBtn" hidden>
+    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    이 지역 재검색
+  </button>
+  <div class="map-ctrl">
+    <button id="zoomIn" aria-label="확대"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 4v16M4 12h16" stroke="#333" stroke-width="1.8"/></svg></button>
+    <button id="zoomOut" aria-label="축소"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 12h16" stroke="#333" stroke-width="1.8"/></svg></button>
+  </div>
+  <div id="ctxMenu" class="ctx-menu" hidden>
+    <button data-ctx="start"><i class="ctx-s">출</i>출발</button>
+    <button data-ctx="end"><i class="ctx-e">도</i>도착</button>
+  </div>
+  <div id="mapBadge" class="map-badge" hidden></div>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/geo.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/routes.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/directions.js"></script>
+  <script>App.boot();</script>
+</body>
+</html>
